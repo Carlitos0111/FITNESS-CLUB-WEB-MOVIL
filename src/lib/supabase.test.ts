@@ -12,6 +12,23 @@ function query(rows: unknown[], count = rows.length) {
 }
 
 describe('adaptador FC-07', () => {
+  it('pide instalaciones solo con JWT actual y sin claves privilegiadas en el navegador', async () => {
+    const getSession = vi.fn(async () => ({ data: { session: { access_token: 'jwt-ficticio' } }, error: null }))
+    const client = { auth: { getSession } } as unknown as SupabaseClient
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ installations: ['a'] }), { status: 200 }))
+    const gateway = supabaseGateway(client, 'https://example.test', 'sb_publishable_public')
+    expect(await gateway.installations!('a')).toEqual(['a'])
+    expect(fetcher).toHaveBeenCalledWith('https://example.test/functions/v1/branch-bridge/installations?branchId=a',
+      expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer jwt-ficticio', apikey: 'sb_publishable_public' }) }))
+    fetcher.mockRestore()
+  })
+  it('no envía actualización con sesión ausente o expirada', async () => {
+    const client = { auth: { getSession: vi.fn(async () => ({ data: { session: null }, error: null })) } } as unknown as SupabaseClient
+    const fetcher = vi.spyOn(globalThis, 'fetch')
+    await expect(supabaseGateway(client, 'https://example.test', 'sb_publishable_public').refresh!('a', 'i', 'k')).rejects.toThrow('Sesión vencida')
+    expect(fetcher).not.toHaveBeenCalled()
+    fetcher.mockRestore()
+  })
   it('no inicializa sin configuración ni con una clave secreta', () => {
     expect(createGateway(undefined, undefined)).toBeNull()
     expect(createGateway('https://example.test', 'sb_secret_private')).toBeNull()

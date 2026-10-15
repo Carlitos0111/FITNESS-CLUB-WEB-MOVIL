@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { PAGE_SIZE } from './lib/supabase'
-import type { AuditEvent, Branch, Gateway, User } from './lib/types'
+import { AccessError, type AuditEvent, type Branch, type Gateway, type User } from './lib/types'
 import css from './style.css?raw'
 
 const A: Branch = { id: 'a', name: 'Sucursal Norte', timeZone: 'America/Argentina/Buenos_Aires' }
@@ -78,6 +78,40 @@ describe('acceso', () => {
 })
 
 describe('sucursales y estado', () => {
+  it('solo permite actualizar con sucursal concreta e instalación autorizada, sin éxito simulado', async () => {
+    const { gateway } = fixture()
+    gateway.installations = vi.fn(async id => id === 'a' ? ['installation-a'] : [])
+    gateway.refreshStatus = vi.fn(async () => null)
+    gateway.refresh = vi.fn(async () => ({ id: 'request-a', status: 'pending' as const, requestedAt: new Date().toISOString(), confirmedAt: null, errorCode: null }))
+    open(gateway, '/sincronizacion')
+    await screen.findByRole('heading', { name: 'Sincronización' })
+    expect(screen.getByRole('button', { name: 'Actualizar' })).toBeDisabled()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Seleccionar sucursal' }), 'a')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toBeEnabled())
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    act(() => window.dispatchEvent(new Event('offline')))
+    expect(screen.getByRole('button', { name: 'Actualizar' })).toBeDisabled()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    act(() => window.dispatchEvent(new Event('online')))
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Seleccionar sucursal' }), 'a')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }))
+    expect(gateway.refresh).toHaveBeenCalledWith('a', 'installation-a', expect.any(String))
+    expect(await screen.findByText('Pendiente')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Actualizar' })).toBeDisabled()
+    expect(screen.getByText('Sin confirmación')).toBeInTheDocument()
+  })
+  it('no habilita la solicitud si el backend falla o rechaza permisos', async () => {
+    const { gateway } = fixture(undefined, [A])
+    gateway.installations = vi.fn(async () => { throw new AccessError('Sin permiso') })
+    gateway.refreshStatus = vi.fn(async () => null)
+    gateway.refresh = vi.fn()
+    open(gateway, '/sincronizacion')
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Seleccionar sucursal' }), 'a')
+    expect(await screen.findByText('Sin permiso')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Actualizar' })).toBeDisabled()
+    expect(gateway.refresh).not.toHaveBeenCalled()
+  })
   it('muestra A+B autorizadas y permite filtrar sin seleccionar sucursal ajena', async () => {
     const { gateway } = fixture()
     open(gateway)

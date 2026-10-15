@@ -1,6 +1,6 @@
 # Fitness Club · Web móvil (FC-09)
 
-Aplicación **independiente** del Desktop para consultas por sucursal. No hay despliegue ni conexión a producción configurada. FC-07 todavía no fue aplicada a Supabase y FC-08 sigue sin emisor remoto; una pantalla vacía **no** demuestra que exista sincronización.
+Aplicación **independiente** del Desktop para consultas por sucursal. No hay despliegue ni conexión a producción configurada. FC-07 no fue aplicada a Supabase; la rama de integración prepara un transporte FC-08 y una Edge Function, pero **no** tiene productor aprobado de métricas. Una pantalla vacía **no** demuestra que exista sincronización.
 
 ## Iniciar en Windows
 
@@ -29,7 +29,7 @@ El build estático queda en `dist/`. `test:no-config` examina el **build generad
 - Login con Supabase Auth (email/contraseña existente), verificación de usuario mediante `getUser`, revalidación en eventos de Auth, al recuperar foco o conectividad, y cierre de sesión. El cliente oculta el área privada mientras verifica identidad y asignaciones.
 - Resumen con selector de sucursal y “Todas”; tarjetas de sucursales asignadas. Indicadores/última actualización muestran **pendiente**, nunca importes ni cifras supuestas.
 - Auditoría minimizada por sucursal, filtros de código exacto, resultado y rango de fechas locales del navegador, 12 registros por página, detalle acotado. No consulta `audit_logs`, instalaciones ni identificadores de origen.
-- Sincronización: estado explícito **no disponible**; “Actualizar” está deshabilitado. Ver [docs/CONTRATOS-PENDIENTES.md](docs/CONTRATOS-PENDIENTES.md).
+- Sincronización: estado **no disponible** por defecto; con `VITE_BRANCH_BRIDGE_ENABLED=true` y autorización verificada por servidor, consulta instalaciones autorizadas y solicitudes autenticadas. Sin productor/catálogo aprobado en Desktop, no activar la integración. Ver [docs/CONTRATOS-PENDIENTES.md](docs/CONTRATOS-PENDIENTES.md).
 
 Responsive con navegación lateral en escritorio y menú móvil, layouts fluidos en tablet/celular; `test:responsive` verifica geometría headless con Chrome instalado en `C:\Program Files\Google\Chrome\Application\chrome.exe` (o variable `FC09_BROWSER_PATH`) y datos ficticios de `tests/visual.html`, **solo en Vite dev, excluido del build**. Faltan pruebas visuales en dispositivos reales ([docs/PRUEBAS-EXTERNAS.md](docs/PRUEBAS-EXTERNAS.md)). Las pruebas automatizadas usan solo dobles ficticios, sin llamar a Supabase.
 

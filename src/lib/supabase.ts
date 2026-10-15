@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { AccessError, type AuditFilters, type AuditPage, type Branch, type Gateway, type User } from './types'
+import { AccessError, type AuditFilters, type AuditPage, type Branch, type Gateway, type RemoteRefresh, type User } from './types'
 
 export const PAGE_SIZE = 12
 
@@ -22,11 +22,44 @@ export function createGateway(url: string | undefined, key: string | undefined):
   const client = createClient(parsed.toString(), key, {
     auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
   })
-  return supabaseGateway(client)
+  // Explicit opt-in: a public Supabase key alone cannot enable write actions.
+  return supabaseGateway(client, import.meta.env.VITE_BRANCH_BRIDGE_ENABLED === 'true' ? parsed.toString() : undefined, key)
 }
 
-export function supabaseGateway(client: SupabaseClient): Gateway {
+export function supabaseGateway(client: SupabaseClient, bridgeUrl?: string, publicKey?: string): Gateway {
+  async function bridge<T>(path: string, payload?: object): Promise<T> {
+    const { data: { session }, error } = await client.auth.getSession()
+    if (error || !session?.access_token) throw new AccessError('Sesión vencida. Volvé a iniciar sesión.')
+    const response = await fetch(`${bridgeUrl!.replace(/\/$/, '')}/functions/v1/branch-bridge/${path}`, {
+      method: payload ? 'POST' : 'GET',
+      headers: { apikey: publicKey!, authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    })
+    if (response.status === 401) {
+      await client.auth.signOut({ scope: 'local' })
+      throw new AccessError('Sesión vencida. Volvé a iniciar sesión.')
+    }
+    if (response.status === 403) throw new AccessError('Permiso insuficiente.')
+    if (!response.ok) throw new Error(`Solicitud rechazada (${response.status}).`)
+    return response.json() as Promise<T>
+  }
   return {
+    ...(bridgeUrl && publicKey ? {
+      async installations(branchId: string) {
+        const result = await bridge<{ installations: string[] }>(`installations?branchId=${encodeURIComponent(branchId)}`)
+        return result.installations
+      },
+      refresh: (branchId: string, installationId: string, idempotencyKey: string) =>
+        bridge<RemoteRefresh>('refresh', { branchId, installationId, idempotencyKey }),
+      async refreshStatus(branchId: string) {
+        const result = await bridge<{ request: RemoteRefresh | null }>(`status?branchId=${encodeURIComponent(branchId)}`)
+        if (!result.request) return null
+        const { id, status, requested_at, confirmed_at, lastConfirmedAt, error_code } = result.request as unknown as {
+          id: string; status: RemoteRefresh['status']; requested_at: string; confirmed_at: string | null;
+          lastConfirmedAt: string | null; error_code: string | null }
+        return { id, status, requestedAt: requested_at, confirmedAt: confirmed_at, lastConfirmedAt, errorCode: error_code }
+      },
+    } : {}),
     async getUser(): Promise<User | null> {
       // getUser validates the JWT with Auth; do not trust locally cached getSession() as authorization.
       const { data, error } = await client.auth.getUser()

@@ -16,6 +16,8 @@ export type AuditFilters = {
   page: number
 }
 export type AuditPage = { rows: AuditEvent[]; total: number }
+export type RemoteRefresh = { id: string; status: 'pending' | 'updating' | 'completed' | 'error';
+  requestedAt: string; confirmedAt: string | null; lastConfirmedAt?: string | null; errorCode: string | null }
 
 export interface Gateway {
   getUser(): Promise<User | null>
@@ -24,6 +26,9 @@ export interface Gateway {
   signOut(): Promise<void>
   branches(userId: string): Promise<Branch[]>
   audit(filters: AuditFilters): Promise<AuditPage>
+  installations?(branchId: string): Promise<string[]>
+  refresh?(branchId: string, installationId: string, idempotencyKey: string): Promise<RemoteRefresh>
+  refreshStatus?(branchId: string): Promise<RemoteRefresh | null>
 }
 
 export class AccessError extends Error {}
