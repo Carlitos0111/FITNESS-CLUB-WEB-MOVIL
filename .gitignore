@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.dev.vars*
+.npmrc
+.wrangler/
+coverage/
+*.tsbuildinfo
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.sqlite
+*.db
