@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { Activity, ArrowLeft, ArrowRight, Building2, ChevronDown, Clock3, CloudOff, LayoutDashboard, ListFilter, LockKeyhole, LogOut, Menu, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import { PAGE_SIZE } from './lib/supabase'
@@ -133,8 +133,12 @@ function Dashboard() {
 
 function Sync() {
   const { gateway, branches, selection } = useApp()
+  const currentSelection = useRef(selection)
+  currentSelection.current = selection
   const [installations, setInstallations] = useState<string[]>([])
   const [installation, setInstallation] = useState('')
+  const currentInstallation = useRef(installation)
+  currentInstallation.current = installation
   const [status, setStatus] = useState<RefreshStatus>({ phase: 'unconfigured' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -165,18 +169,24 @@ function Sync() {
   }, [gateway, selection])
   async function update() {
     if (!gateway.refresh || !installation || selection === 'all' || loading) return
+    const requestedBranch = selection
+    const requestedInstallation = installation
     const operationKey = key || crypto.randomUUID()
     setKey(operationKey); setLoading(true); setError('')
     try {
       const result = await gateway.refresh(selection, installation, operationKey)
-      setStatus(remoteStatus(result))
-      if (result.status === 'completed' || result.status === 'error') setKey('')
-    } catch (cause) { setError(problem(cause)) }
+      if (currentSelection.current === requestedBranch && currentInstallation.current === requestedInstallation) {
+        setStatus(remoteStatus(result))
+        if (result.status === 'completed' || result.status === 'error') setKey('')
+      }
+    } catch (cause) {
+      if (currentSelection.current === requestedBranch && currentInstallation.current === requestedInstallation) setError(problem(cause))
+    }
     finally { setLoading(false) }
   }
   const enabled = online && selection !== 'all' && installations.includes(installation) && !!gateway.refresh && !loading &&
     status.phase !== 'pending' && status.phase !== 'updating'
-  return <><Heading eyebrow="ESTADO / 03" title="Sincronización" description="Estado de la integración remota para las sucursales de tu cuenta." /><div className="sync-layout"><div className="panel sync-feature"><span className="feature-icon"><RefreshCw size={27} /></span><span className="eyebrow">INTEGRACIÓN REMOTA</span><h2>{installations.length ? 'Solicitud autenticada' : 'Esperando configuración'}</h2><p>El estado completado requiere acuse del agente. La operación local del gimnasio no depende de esta consulta.</p>{installations.length > 1 && <label>Instalación autorizada<select value={installation} onChange={event => setInstallation(event.target.value)}><option value="">Elegí una instalación</option>{installations.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}<button className="button button--primary" disabled={!enabled} onClick={update}><RefreshCw size={17} /> {loading ? 'Solicitando…' : 'Actualizar'}</button>{error && <p role="alert" className="alert">{error}</p>}<small>{selection === 'all' ? 'Seleccioná una sucursal; no hay actualización masiva.' : installations.length ? 'Solo instalaciones autorizadas por el servidor.' : 'Requiere permiso explícito y backend habilitado.'}</small></div><div className="sync-side"><div className="panel detail-panel"><span className="eyebrow">ESTADO ACTUAL</span><h3>Sucursal seleccionada</h3><p>{selection === 'all' ? 'Todas las sucursales autorizadas' : branches.find(branch => branch.id === selection)?.name}</p><RefreshStatusView status={status} /><div className="detail-row"><span>Instalación autorizada</span><strong>{installations.length ? 'Verificada en servidor' : 'Pendiente de verificar en servidor'}</strong></div></div></div></div></>
+  return <><Heading eyebrow="ESTADO / 03" title="Sincronización" description="Estado de la integración remota para las sucursales de tu cuenta." /><div className="sync-layout"><div className="panel sync-feature"><span className="feature-icon"><RefreshCw size={27} /></span><span className="eyebrow">INTEGRACIÓN REMOTA</span><h2>{installations.length ? 'Solicitud autenticada' : 'Esperando configuración'}</h2><p>El estado completado requiere acuse del agente. La operación local del gimnasio no depende de esta consulta.</p>{installations.length > 1 && <label>Instalación autorizada<select value={installation} onChange={event => { setInstallation(event.target.value); setKey('') }}><option value="">Elegí una instalación</option>{installations.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}<button className="button button--primary" disabled={!enabled} onClick={update}><RefreshCw size={17} /> {loading ? 'Solicitando…' : 'Actualizar'}</button>{error && <p role="alert" className="alert">{error}</p>}<small>{selection === 'all' ? 'Seleccioná una sucursal; no hay actualización masiva.' : installations.length ? 'Solo instalaciones autorizadas por el servidor.' : 'Requiere permiso explícito y backend habilitado.'}</small></div><div className="sync-side"><div className="panel detail-panel"><span className="eyebrow">ESTADO ACTUAL</span><h3>Sucursal seleccionada</h3><p>{selection === 'all' ? 'Todas las sucursales autorizadas' : branches.find(branch => branch.id === selection)?.name}</p><RefreshStatusView status={status} /><div className="detail-row"><span>Instalación autorizada</span><strong>{installations.length ? 'Verificada en servidor' : 'Pendiente de verificar en servidor'}</strong></div></div></div></div></>
 }
 
 const emptyFilters = (): AuditFilters => ({ branchIds: [], code: '', outcome: '', from: '', to: '', page: 1 })

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { PAGE_SIZE } from './lib/supabase'
-import { AccessError, type AuditEvent, type Branch, type Gateway, type User } from './lib/types'
+import { AccessError, type AuditEvent, type Branch, type Gateway, type RemoteRefresh, type User } from './lib/types'
 import css from './style.css?raw'
 
 const A: Branch = { id: 'a', name: 'Sucursal Norte', timeZone: 'America/Argentina/Buenos_Aires' }
@@ -111,6 +111,23 @@ describe('sucursales y estado', () => {
     expect(await screen.findByText('Sin permiso')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Actualizar' })).toBeDisabled()
     expect(gateway.refresh).not.toHaveBeenCalled()
+  })
+  it('no muestra en B la respuesta tardía de Actualizar para A', async () => {
+    const { gateway } = fixture()
+    let finish!: (value: RemoteRefresh) => void
+    gateway.installations = vi.fn(async id => id === 'a' ? ['installation-a'] : ['installation-b'])
+    gateway.refreshStatus = vi.fn(async () => null)
+    gateway.refresh = vi.fn(() => new Promise<RemoteRefresh>(resolve => { finish = resolve }))
+    open(gateway, '/sincronizacion')
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Seleccionar sucursal' }), 'a')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toBeEnabled())
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }))
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Seleccionar sucursal' }), 'b')
+    await waitFor(() => expect(screen.getByText('Verificada en servidor')).toBeInTheDocument())
+    await act(async () => finish({ id: 'request-a', status: 'pending', requestedAt: new Date().toISOString(), confirmedAt: null, errorCode: null }))
+    expect(screen.queryByText('Pendiente')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Actualizar' })).toBeEnabled()
+    expect(gateway.refresh).toHaveBeenCalledWith('a', 'installation-a', expect.any(String))
   })
   it('muestra A+B autorizadas y permite filtrar sin seleccionar sucursal ajena', async () => {
     const { gateway } = fixture()
